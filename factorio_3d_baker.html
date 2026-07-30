@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Factorio 3D Sprite Baker</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --panel-bg: #1c1c1c;
+            --accent-color: #e67e22;
+            --text-color: #e0e0e0;
+            --border-color: #333333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        header h1 {
+            margin: 0;
+            color: var(--accent-color);
+            font-size: 1.8rem;
+        }
+
+        header p {
+            margin: 5px 0 0 0;
+            font-size: 0.9rem;
+            color: #888;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 350px 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 1100px) {
+            .layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .panel h2 {
+            margin: 0;
+            font-size: 1.2rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 8px;
+            color: #bbb;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        label {
+            font-weight: 600;
+            font-size: 0.85rem;
+            color: #ccc;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            background-color: #111;
+            border: 1px solid var(--border-color);
+            color: #fff;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .viewport-container {
+            position: relative;
+            background-color: #222; /* Dark grey backdrop for shadow/normal contrast */
+            border: 1px solid var(--border-color);
+            aspect-ratio: 1;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        #webglCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .preview-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            pointer-events: none;
+        }
+
+        .btn {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+            text-align: center;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .btn:hover {
+            background-color: #d35400;
+        }
+
+        .btn-secondary {
+            background-color: #333;
+        }
+
+        .btn-secondary:hover {
+            background-color: #444;
+        }
+
+        .sprite-output-container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .sheet-preview-box {
+            background: #111;
+            border: 1px dashed var(--border-color);
+            min-height: 200px;
+            max-height: 350px;
+            overflow: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+        }
+
+        #sheetPreview {
+            max-width: 100%;
+            display: none;
+            image-rendering: pixelated;
+            background-image: 
+                linear-gradient(45deg, #1a1a1a 25%, transparent 25%), 
+                linear-gradient(-45deg, #1a1a1a 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #1a1a1a 75%), 
+                linear-gradient(-45deg, transparent 75%, #1a1a1a 75%);
+            background-size: 16px 16px;
+        }
+
+        .code-output {
+            background-color: #0d0d0d;
+            border: 1px solid var(--border-color);
+            color: #a9b7c6;
+            padding: 15px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.8rem;
+            white-space: pre-wrap;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 0;
+        }
+
+        #animInfo {
+            font-size: 0.8rem;
+            color: #aaa;
+            line-height: 1.25rem;
+        }
+    </style>
+
+    <script type="importmap">
+        {
+          "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+          }
+        }
+    </script>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Factorio 3D Sprite Baker</h1>
+        <p>Load 3D models, align orthographic camera projections, and bake standard, shadow, and normal map sheets.</p>
+    </header>
+
+    <div class="layout">
+        <!-- 1. Controls Column -->
+        <div class="panel">
+            <h2>Model & Path</h2>
+            <div class="form-group">
+                <label for="fileLoader">Load Model File(s)</label>
+                <input type="file" id="fileLoader" accept=".gltf,.glb,.obj,.mtl,.bin,.png,.jpg,.jpeg" multiple>
+                <div id="animInfo">
+                    Using procedural turret by default.<br>
+                    <em>Tip: Select both <strong>.gltf + .bin + textures</strong> or <strong>.obj + .mtl</strong> together using Ctrl/Cmd-Click.</em>
+                </div>
+            </div>
+
+            <!-- Dynamic Animation Selection dropdown -->
+            <div class="form-group" id="animSelectGroup" style="display: none;">
+                <label for="animSelect">Select Animation Clip</label>
+                <select id="animSelect"></select>
+            </div>
+
+            <div class="row">
+                <div class="form-group">
+                    <label for="modName">Mod Name</label>
+                    <input type="text" id="modName" value="my-mod">
+                </div>
+                <div class="form-group">
+                    <label for="entityName">Entity Name</label>
+                    <input type="text" id="entityName" value="turret">
+                </div>
+            </div>
+
+            <h2>Camera & Framing</h2>
+            <div class="form-group">
+                <label for="zoom">Camera Frustum (Zoom)</label>
+                <input type="range" id="zoom" min="1" max="150" step="0.1" value="4">
+            </div>
+            <div class="form-group">
+                <label for="modelY">Model Y-Offset</label>
+                <input type="range" id="modelY" min="-50" max="50" step="0.1" value="0">
+            </div>
+            
+            <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px;">
+                <input type="checkbox" id="showGrid" checked style="width: auto; cursor: pointer;">
+                <label for="showGrid" style="cursor: pointer; user-select: none;">Show Tile Grid (1 Unit = 1 Factorio Tile)</label>
+            </div>
+            
+            <button class="btn btn-secondary" id="btnResetCamera">Reset to Factorio Pitch</button>
+
+            <h2>Bake Settings</h2>
+            <div class="row">
+                <div class="form-group">
+                    <label for="frameSize">Frame Size (px)</label>
+                    <select id="frameSize">
+                        <option value="64">64 x 64</option>
+                        <option value="128" selected>128 x 128</option>
+                        <option value="256">256 x 256</option>
+                        <option value="512">512 x 512</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="columns">Sheet Columns</label>
+                    <input type="number" id="columns" value="8" min="1">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="bakeType">Bake Selection</label>
+                <select id="bakeType">
+                    <option value="rotations">Directional Rotations</option>
+                    <option value="animation">Active Model Animation</option>
+                </select>
+            </div>
+
+            <div id="rotationsGroup" class="form-group">
+                <label for="directions">Number of Directions</label>
+                <select id="directions">
+                    <option value="4">4 Directions</option>
+                    <option value="8" selected>8 Directions</option>
+                    <option value="16">16 Directions</option>
+                    <option value="32">32 Directions</option>
+                </select>
+            </div>
+
+            <div id="animationGroup" class="form-group" style="display: none;">
+                <label for="frameCount">Animation Frames to Render</label>
+                <input type="number" id="frameCount" value="16" min="1">
+            </div>
+
+            <h2>Render Type</h2>
+            <div class="row">
+                <div class="form-group">
+                    <label for="renderMode">Pass</label>
+                    <select id="renderMode">
+                        <option value="base" selected>Color / Base</option>
+                        <option value="shadow">Shadows Only</option>
+                        <option value="normal">Normal Map</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="shadowOpacity">Shadow Opacity</label>
+                    <input type="range" id="shadowOpacity" min="0" max="1" step="0.05" value="0.6">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="lightAngle">Sunlight Rotation</label>
+                <input type="range" id="lightAngle" min="0" max="360" step="1" value="135">
+            </div>
+
+            <button class="btn" id="btnBake">Bake Spritesheet</button>
+        </div>
+
+        <!-- 2. Interactive Viewport Column -->
+        <div class="panel">
+            <h2>3D Viewport</h2>
+            <div class="viewport-container" id="viewportContainer">
+                <canvas id="webglCanvas"></canvas>
+                <div class="preview-overlay">Orthographic Factorio Mode (Tilt: 45°)</div>
+            </div>
+            <p style="font-size: 0.8rem; color: #888; margin: 0;">
+                Drag with left mouse button to inspect in 3D. Hit <strong>"Reset to Factorio Pitch"</strong> to snap camera back to orthographic 45° angle prior to baking.
+            </p>
+        </div>
+
+        <!-- 3. Output Column -->
+        <div class="panel sprite-output-container">
+            <h2>Spritesheet Output</h2>
+            <div class="sheet-preview-box">
+                <img id="sheetPreview" alt="Baked Sheet Preview">
+            </div>
+            <a class="btn" id="downloadBtn" style="display: none;">Download Image</a>
+
+            <h2>Generated Lua Code</h2>
+            <pre class="code-output" id="luaOutput">Loading...</pre>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+    import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+    import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+    import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    const inputs = {
+        fileLoader: document.getElementById('fileLoader'),
+        modName: document.getElementById('modName'),
+        entityName: document.getElementById('entityName'),
+        zoom: document.getElementById('zoom'),
+        modelY: document.getElementById('modelY'),
+        frameSize: document.getElementById('frameSize'),
+        columns: document.getElementById('columns'),
+        bakeType: document.getElementById('bakeType'),
+        directions: document.getElementById('directions'),
+        frameCount: document.getElementById('frameCount'),
+        renderMode: document.getElementById('renderMode'),
+        shadowOpacity: document.getElementById('shadowOpacity'),
+        lightAngle: document.getElementById('lightAngle'),
+        showGrid: document.getElementById('showGrid')
+    };
+
+    const rotationsGroup = document.getElementById('rotationsGroup');
+    const animationGroup = document.getElementById('animationGroup');
+    const animSelectGroup = document.getElementById('animSelectGroup');
+    const animSelect = document.getElementById('animSelect');
+    const btnResetCamera = document.getElementById('btnResetCamera');
+    const btnBake = document.getElementById('btnBake');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    let scene, camera, renderer, controls;
+    let dirLight, groundMesh, modelGroup, gridHelper;
+    let activeMixer = null;
+    let activeClip = null;
+    let gltfAnimations = [];
+    let lastTime = 0;
+    let objectURLs = [];
+
+    let modelBounds = {
+        center: new THREE.Vector3(0, 0, 0),
+        size: new THREE.Vector3(1, 1, 1),
+        min: new THREE.Vector3(-0.5, -0.5, -0.5),
+        max: new THREE.Vector3(0.5, 0.5, 0.5),
+        maxDim: 1
+    };
+
+    const bakeCanvas = document.createElement('canvas');
+    const bakeCtx = bakeCanvas.getContext('2d');
+
+    inputs.bakeType.addEventListener('change', (e) => {
+        if (e.target.value === 'rotations') {
+            rotationsGroup.style.display = 'flex';
+            animationGroup.style.display = 'none';
+        } else {
+            rotationsGroup.style.display = 'none';
+            animationGroup.style.display = 'flex';
+        }
+        updateLuaOutput();
+    });
+
+    animSelect.addEventListener('change', (e) => {
+        const index = parseInt(e.target.value);
+        if (gltfAnimations[index]) {
+            playAnimation(gltfAnimations[index]);
+        }
+    });
+
+    Object.values(inputs).forEach(input => {
+        input.addEventListener('input', () => {
+            updateCameraScale();
+            updateShadowSettings();
+            updateLightDirection();
+            updateLuaOutput();
+        });
+    });
+
+    btnResetCamera.addEventListener('click', resetCameraToFactorio);
+    btnBake.addEventListener('click', bakeSpriteSheet);
+
+    initThree();
+    setupDefaultScene();
+    animate(0);
+
+    function initThree() {
+        const container = document.getElementById('viewportContainer');
+        scene = new THREE.Scene();
+
+        const size = parseFloat(inputs.zoom.value);
+        camera = new THREE.OrthographicCamera(-size/2, size/2, size/2, -size/2, 0.1, 500);
+        camera.position.set(0, 10, 10);
+        camera.lookAt(0, 0, 0);
+
+        renderer = new THREE.WebGLRenderer({
+            canvas: document.getElementById('webglCanvas'),
+            antialias: true,
+            alpha: true,
+            preserveDrawingBuffer: true
+        });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.target.set(0, 0, 0);
+
+        window.addEventListener('resize', onWindowResize);
+    }
+
+    function onWindowResize() {
+        const container = document.getElementById('viewportContainer');
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        updateCameraScale();
+    }
+
+    function setupDefaultScene() {
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+
+        dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 1024;
+        dirLight.shadow.mapSize.height = 1024;
+        dirLight.shadow.bias = -0.0005;
+        scene.add(dirLight);
+
+        const groundGeo = new THREE.PlaneGeometry(1000, 1000);
+        groundGeo.rotateX(-Math.PI / 2);
+        const groundMat = new THREE.ShadowMaterial({ opacity: parseFloat(inputs.shadowOpacity.value) });
+        groundMesh = new THREE.Mesh(groundGeo, groundMat);
+        groundMesh.name = "ground";
+        groundMesh.receiveShadow = true;
+        scene.add(groundMesh);
+
+        // Tile grid representing Factorio spatial tile measurements
+        gridHelper = new THREE.GridHelper(20, 20, 0xe67e22, 0x444444);
+        gridHelper.name = "grid";
+        scene.add(gridHelper);
+
+        modelGroup = createProceduralTurret();
+        scene.add(modelGroup);
+        calculateModelBounds();
+    }
+
+    function calculateModelBounds() {
+        if (!modelGroup) return;
+
+        const box = new THREE.Box3().setFromObject(modelGroup);
+        modelBounds.center = box.getCenter(new THREE.Vector3());
+        modelBounds.size = box.getSize(new THREE.Vector3());
+        modelBounds.min = box.min;
+        modelBounds.max = box.max;
+        modelBounds.maxDim = Math.max(modelBounds.size.x, modelBounds.size.y, modelBounds.size.z);
+
+        const dim = modelBounds.maxDim;
+
+        groundMesh.position.y = modelBounds.min.y;
+        if (gridHelper) {
+            gridHelper.position.y = modelBounds.min.y;
+        }
+
+        inputs.zoom.min = (dim * 0.1).toFixed(1);
+        inputs.zoom.max = (dim * 6.0).toFixed(1);
+        inputs.zoom.value = (dim * 1.5).toFixed(1);
+
+        inputs.modelY.min = (-dim * 2.0).toFixed(1);
+        inputs.modelY.max = (dim * 2.0).toFixed(1);
+        inputs.modelY.value = "0.0";
+
+        controls.target.copy(modelBounds.center);
+        controls.update();
+
+        updateCameraScale();
+        updateLightDirection();
+        updateLuaOutput();
+    }
+
+    function updateCameraScale() {
+        const size = parseFloat(inputs.zoom.value);
+        camera.left = -size / 2;
+        camera.right = size / 2;
+        camera.top = size / 2;
+        camera.bottom = -size / 2;
+        camera.updateProjectionMatrix();
+
+        if (modelGroup) {
+            const offset = parseFloat(inputs.modelY.value);
+            modelGroup.position.y = offset;
+            
+            const isNormalMode = inputs.renderMode.value === 'normal';
+            if (groundMesh) {
+                groundMesh.position.y = modelBounds.min.y + offset;
+                groundMesh.visible = !isNormalMode;
+            }
+            if (gridHelper) {
+                gridHelper.position.y = modelBounds.min.y + offset;
+                gridHelper.visible = inputs.showGrid.checked && !isNormalMode;
+            }
+        }
+    }
+
+    function updateShadowSettings() {
+        if (groundMesh) {
+            groundMesh.material.opacity = parseFloat(inputs.shadowOpacity.value);
+        }
+        applyRenderMode();
+    }
+
+    function updateLightDirection() {
+        if (!dirLight) return;
+
+        const degrees = parseFloat(inputs.lightAngle.value);
+        const rad = (degrees * Math.PI) / 180;
+        const maxDim = modelBounds.maxDim;
+        const center = modelBounds.center;
+
+        const lightHeight = modelBounds.max.y + maxDim * 2.0;
+        const lightRadius = maxDim * 1.5;
+
+        dirLight.position.x = center.x + Math.cos(rad) * lightRadius;
+        dirLight.position.z = center.z + Math.sin(rad) * lightRadius;
+        dirLight.position.y = lightHeight;
+
+        const d = maxDim * 1.5;
+        dirLight.shadow.camera.left = -d;
+        dirLight.shadow.camera.right = d;
+        dirLight.shadow.camera.top = d;
+        dirLight.shadow.camera.bottom = -d;
+        dirLight.shadow.camera.near = 0.1;
+        dirLight.shadow.camera.far = lightHeight * 3.0;
+        dirLight.shadow.camera.updateProjectionMatrix();
+    }
+
+    function resetCameraToFactorio() {
+        controls.reset();
+        camera.position.set(0, 10, 10);
+        camera.lookAt(0, 0, 0);
+        controls.target.copy(modelBounds.center);
+        controls.update();
+        updateCameraScale();
+    }
+
+    function createProceduralTurret() {
+        const group = new THREE.Group();
+        const baseGeo = new THREE.CylinderGeometry(0.8, 0.9, 0.3, 16);
+        const metalMat = new THREE.MeshStandardMaterial({ color: 0x4a4a4a, roughness: 0.4, metalness: 0.8 });
+        const base = new THREE.Mesh(baseGeo, metalMat);
+        base.position.y = 0.15;
+        base.castShadow = true;
+        base.receiveShadow = true;
+        group.add(base);
+        
+        const bodyGeo = new THREE.BoxGeometry(0.9, 0.8, 0.9);
+        const orangeMat = new THREE.MeshStandardMaterial({ color: 0xd35400, roughness: 0.5, metalness: 0.1 });
+        const body = new THREE.Mesh(bodyGeo, orangeMat);
+        body.position.y = 0.7;
+        body.castShadow = true;
+        body.receiveShadow = true;
+        group.add(body);
+        
+        const barrelGeo = new THREE.CylinderGeometry(0.12, 0.12, 1.0, 8);
+        barrelGeo.rotateX(Math.PI / 2);
+        const barrel = new THREE.Mesh(barrelGeo, metalMat);
+        barrel.position.set(0, 0.8, 0.5);
+        barrel.castShadow = true;
+        group.add(barrel);
+        
+        const radarGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.08, 12);
+        const radar = new THREE.Mesh(radarGeo, metalMat);
+        radar.position.set(0, 1.14, 0);
+        radar.castShadow = true;
+        group.add(radar);
+        
+        group.userData = {
+            animate: (time) => {
+                radar.rotation.y = time * 3;
+            }
+        };
+        
+        return group;
+    }
+
+    function playAnimation(clip) {
+        if (!activeMixer) return;
+        activeMixer.stopAllAction();
+        activeClip = clip;
+        const action = activeMixer.clipAction(clip);
+        action.play();
+    }
+
+    inputs.fileLoader.addEventListener('change', (e) => {
+        const files = e.target.files;
+        if (files.length === 0) return;
+
+        objectURLs.forEach(url => URL.revokeObjectURL(url));
+        objectURLs = [];
+
+        const fileMap = {};
+        let mainFile = null;
+        let mtlFile = null;
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const name = file.name;
+            const ext = name.split('.').pop().toLowerCase();
+            const url = URL.createObjectURL(file);
+            
+            objectURLs.push(url);
+            fileMap[name] = { url, file };
+
+            if (ext === 'gltf' || ext === 'glb') {
+                mainFile = { name, url, ext };
+            } else if (ext === 'obj') {
+                mainFile = { name, url, ext };
+            } else if (ext === 'mtl') {
+                mainFile = { name, url, ext };
+            }
+        }
+
+        if (!mainFile) {
+            alert("No main model file found. Please include a .gltf, .glb, or .obj file in your selection.");
+            return;
+        }
+
+        const loadingManager = new THREE.LoadingManager();
+        loadingManager.setURLModifier((url) => {
+            const cleanName = decodeURI(url.replace(/^.*[\\\/]/, '').split('?')[0].split('#')[0]);
+            if (fileMap[cleanName]) {
+                return fileMap[cleanName].url;
+            }
+            return url;
+        });
+
+        const dracoLoader = new DRACOLoader();
+        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+
+        if (modelGroup) scene.remove(modelGroup);
+        activeMixer = null;
+        activeClip = null;
+        gltfAnimations = [];
+        animSelect.innerHTML = '';
+        animSelectGroup.style.display = 'none';
+
+        if (mainFile.ext === 'glb' || mainFile.ext === 'gltf') {
+            const loader = new GLTFLoader(loadingManager);
+            loader.setDRACOLoader(dracoLoader);
+            loader.setMeshoptDecoder(MeshoptDecoder);
+
+            loader.load(mainFile.url, (gltf) => {
+                modelGroup = gltf.scene;
+                setupLoadedModel();
+
+                if (gltf.animations && gltf.animations.length > 0) {
+                    gltfAnimations = gltf.animations;
+                    animSelectGroup.style.display = 'flex';
+                    
+                    gltf.animations.forEach((clip, index) => {
+                        const opt = document.createElement('option');
+                        opt.value = index;
+                        opt.textContent = clip.name || `Animation ${index + 1}`;
+                        animSelect.appendChild(opt);
+                    });
+
+                    activeMixer = new THREE.AnimationMixer(modelGroup);
+                    playAnimation(gltfAnimations[0]);
+                    
+                    document.getElementById('animInfo').innerHTML = `<span style="color: #2ecc71; font-weight: bold;">✔ Loaded GLTF/GLB</span><br>Skeletal animations populated in selector.`;
+                } else {
+                    document.getElementById('animInfo').innerHTML = `<span style="color: #2ecc71; font-weight: bold;">✔ Loaded GLTF/GLB</span><br>Model loaded successfully (no animation clips found).`;
+                }
+            }, undefined, (error) => {
+                console.error(error);
+                const errorMsg = error?.message || error || "Unknown parsing error";
+                document.getElementById('animInfo').innerHTML = 
+                    `<span style="color: #ff4d4d; font-weight: bold;">❌ Error Loading Model:</span><br>` +
+                    `<span style="font-size: 0.85rem; color: #ff8080;">${errorMsg}</span><br>` +
+                    `<span style="font-size: 0.8rem; color: #aaa; display: block; margin-top: 5px;">` +
+                    `If using split files, make sure to highlight both the <strong>.gltf</strong> and its accompanying <strong>.bin</strong> / texture files together in the file chooser.</span>`;
+            });
+        } 
+        else if (mainFile.ext === 'obj') {
+            if (mtlFile) {
+                const mtlLoader = new MTLLoader(loadingManager);
+                mtlLoader.load(mtlFile.url, (materials) => {
+                    materials.preload();
+                    const objLoader = new OBJLoader(loadingManager);
+                    objLoader.setMaterials(materials);
+                    objLoader.load(mainFile.url, (obj) => {
+                        modelGroup = obj;
+                        setupLoadedModel();
+                        document.getElementById('animInfo').innerHTML = `<span style="color: #2ecc71; font-weight: bold;">✔ Loaded OBJ + MTL</span><br>OBJ model with MTL materials set up.`;
+                    }, undefined, (err) => {
+                        console.error(err);
+                        alert("Error parsing OBJ file.");
+                    });
+                }, undefined, (err) => {
+                    console.error(err);
+                    alert("Error loading associated MTL file. Rendering OBJ without materials.");
+                    loadObjDirectly(mainFile.url, loadingManager);
+                });
+            } else {
+                loadObjDirectly(mainFile.url, loadingManager);
+            }
+        }
+    });
+
+    function loadObjDirectly(url, manager) {
+        const objLoader = new OBJLoader(manager);
+        objLoader.load(url, (obj) => {
+            modelGroup = obj;
+            setupLoadedModel();
+            document.getElementById('animInfo').innerHTML = `<span style="color: #2ecc71; font-weight: bold;">✔ Loaded OBJ</span><br>Model loaded (no external material profiles mapped).`;
+        }, undefined, (err) => {
+            console.error(err);
+            alert("Error parsing OBJ file structure.");
+        });
+    }
+
+    function setupLoadedModel() {
+        modelGroup.traverse(child => {
+            if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+                if (child.material) {
+                    child.material.roughness = child.material.roughness !== undefined ? child.material.roughness : 0.5;
+                    child.material.metalness = child.material.metalness !== undefined ? child.material.metalness : 0.1;
+                }
+            }
+        });
+        scene.add(modelGroup);
+        calculateModelBounds();
+        applyRenderMode();
+    }
+
+    function applyRenderMode() {
+        if (!modelGroup) return;
+        const mode = inputs.renderMode.value;
+
+        modelGroup.traverse(child => {
+            if (child.isMesh && child.name !== "ground") {
+                if (mode === 'shadow') {
+                    // Shadows only: hide color rendering, keep depth pass active
+                    if (!child.userData.originalMaterial) {
+                        child.userData.originalMaterial = child.material;
+                    }
+                    child.material = new THREE.MeshBasicMaterial({ colorWrite: false });
+                } else if (mode === 'normal') {
+                    // Normal mapping: switch mesh to standard camera normal vector mapping
+                    if (!child.userData.originalMaterial) {
+                        child.userData.originalMaterial = child.material;
+                    }
+                    child.material = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide });
+                } else {
+                    // Revert back to original base color and texture maps
+                    if (child.userData.originalMaterial) {
+                        child.material = child.userData.originalMaterial;
+                    }
+                }
+            }
+        });
+
+        // Hide ground and tile grids during normal bakes
+        const isNormalMode = mode === 'normal';
+        if (groundMesh) {
+            groundMesh.visible = !isNormalMode;
+        }
+        if (gridHelper) {
+            gridHelper.visible = inputs.showGrid.checked && !isNormalMode;
+        }
+    }
+
+    function animate(time) {
+        requestAnimationFrame(animate);
+        const delta = (time - lastTime) / 1000;
+        lastTime = time;
+
+        if (controls) controls.update();
+
+        if (activeMixer) {
+            activeMixer.update(delta);
+        } else if (modelGroup && modelGroup.userData.animate) {
+            modelGroup.userData.animate(time / 1000);
+        }
+
+        if (renderer && scene && camera) {
+            renderer.render(scene, camera);
+        }
+    }
+
+    function bakeSpriteSheet() {
+        if (!modelGroup) return;
+
+        const frameSize = parseInt(inputs.frameSize.value);
+        const columns = parseInt(inputs.columns.value);
+        const bakeType = inputs.bakeType.value;
+
+        let totalFrames = 0;
+        if (bakeType === "rotations") {
+            totalFrames = parseInt(inputs.directions.value);
+        } else {
+            totalFrames = parseInt(inputs.frameCount.value);
+        }
+
+        const rows = Math.ceil(totalFrames / columns);
+
+        bakeCanvas.width = columns * frameSize;
+        bakeCanvas.height = rows * frameSize;
+        bakeCtx.clearRect(0, 0, bakeCanvas.width, bakeCanvas.height);
+
+        const origWidth = renderer.domElement.width;
+        const origHeight = renderer.domElement.height;
+        const originalYRotation = modelGroup.rotation.y;
+        
+        // Disable layout aids during the render pipeline
+        const wasGridVisible = gridHelper ? gridHelper.visible : false;
+        if (gridHelper) gridHelper.visible = false;
+
+        renderer.setSize(frameSize, frameSize, false);
+        camera.aspect = 1;
+        camera.updateProjectionMatrix();
+        controls.enabled = false;
+
+        for (let i = 0; i < totalFrames; i++) {
+            if (bakeType === "rotations") {
+                const angle = (i * 2 * Math.PI) / totalFrames;
+                modelGroup.rotation.y = angle;
+            } else {
+                if (activeMixer) {
+                    const duration = activeClip ? activeClip.duration : 1;
+                    const time = (i / totalFrames) * duration;
+                    activeMixer.setTime(time);
+                } else if (modelGroup.userData.animate) {
+                    const time = (i / totalFrames) * (Math.PI * 2 / 3);
+                    modelGroup.userData.animate(time);
+                }
+            }
+
+            renderer.render(scene, camera);
+
+            const col = i % columns;
+            const row = Math.floor(i / columns);
+
+            bakeCtx.drawImage(
+                renderer.domElement,
+                col * frameSize,
+                row * frameSize,
+                frameSize,
+                frameSize
+            );
+        }
+
+        renderer.setSize(origWidth, origHeight, false);
+        controls.enabled = true;
+        modelGroup.rotation.y = originalYRotation;
+        
+        if (gridHelper) gridHelper.visible = wasGridVisible;
+        onWindowResize();
+
+        const dataURL = bakeCanvas.toDataURL('image/png');
+        const previewImg = document.getElementById('sheetPreview');
+        previewImg.src = dataURL;
+        previewImg.style.display = 'block';
+
+        downloadBtn.style.display = 'inline-block';
+        downloadBtn.href = dataURL;
+        downloadBtn.download = `${inputs.entityName.value || 'entity'}-${inputs.renderMode.value}.png`;
+    }
+
+    function updateLuaOutput() {
+        const mod = inputs.modName.value || 'my-mod';
+        const entity = inputs.entityName.value || 'my-entity';
+        const frameSize = parseInt(inputs.frameSize.value) || 128;
+        const columns = parseInt(inputs.columns.value) || 8;
+        const bakeType = inputs.bakeType.value;
+        
+        let totalFrames = 0;
+        let timingConfig = '';
+
+        if (bakeType === "rotations") {
+            totalFrames = parseInt(inputs.directions.value) || 8;
+            timingConfig = `\n      direction_count = ${totalFrames},`;
+        } else {
+            totalFrames = parseInt(inputs.frameCount.value) || 16;
+            timingConfig = `\n      frame_count = ${totalFrames},\n      animation_speed = 0.5,`;
+        }
+
+        const luaString = `-- Generated Layered Factorio Definition File
+-- Integrates Base Texture, Shadows, and Normal mapping layers.
+
+sprite_definition = {
+  layers = {
+    -- Base Layer
+    {
+      filename = "__${mod}__/graphics/entity/${entity}/${entity}-base.png",
+      width = ${frameSize},
+      height = ${frameSize},${timingConfig}
+      line_length = ${columns},
+      scale = 0.5,
+      priority = "high",
+      shift = {0, 0}
+    },
+    -- Multiplicative Shadows Layer
+    {
+      filename = "__${mod}__/graphics/entity/${entity}/${entity}-shadow.png",
+      width = ${frameSize},
+      height = ${frameSize},${timingConfig}
+      line_length = ${columns},
+      scale = 0.5,
+      priority = "high",
+      draw_as_shadow = true,
+      shift = {0, 0}
+    },
+    -- Dynamic Lighting Normal Map Layer
+    {
+      filename = "__${mod}__/graphics/entity/${entity}/${entity}-normal.png",
+      width = ${frameSize},
+      height = ${frameSize},${timingConfig}
+      line_length = ${columns},
+      scale = 0.5,
+      priority = "high",
+      draw_as_normal_map = true,
+      shift = {0, 0}
+    }
+  }
+}`;
+        document.getElementById('luaOutput').textContent = luaString;
+    }
+</script>
+
+</body>
+</html>
